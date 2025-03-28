@@ -35,7 +35,7 @@ serve(async (req: Request) => {
       .select(`
         teamId,
         fullName,
-        devision,
+        division,
         confernece
       `);
       
