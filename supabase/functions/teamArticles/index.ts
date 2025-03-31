@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
         summaryGerman,
         summaryEnglish,
         image1,
-        team,
+        team (
+        teamId
+        ),
         status
       `)
     
