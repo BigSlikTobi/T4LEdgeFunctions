@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ data }),
       { 
         headers: { 
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           ...corsHeaders 
         } 
       }
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
       { 
         status: 400,
         headers: { 
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json; charset=utf-8',
           ...corsHeaders 
         } 
       }
