@@ -8,8 +8,7 @@ console.log("Roster Edge Function Initialized");
 // Add comprehensive UTF-8 headers
 const contentHeaders = {
   "Content-Type": "application/json; charset=utf-8",
-  "Accept-Charset": "utf-8",
-  "Content-Encoding": "UTF-8"
+  "Accept-Charset": "utf-8"
 };
 
 serve(async (req) => {
