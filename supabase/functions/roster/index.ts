@@ -24,8 +24,8 @@ serve(async (req) => {
   try {
     // Parse pagination parameters and teamId from URL
     const url = new URL(req.url);
-    const page = parseInt(url.searchParams.get('page') || '1');
-    let pageSize = parseInt(url.searchParams.get('page_size') || String(DEFAULT_PAGE_SIZE));
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    let pageSize = parseInt(url.searchParams.get('page_size') || String(DEFAULT_PAGE_SIZE), 10);
     const teamId = url.searchParams.get('teamId'); // New parameter for team filtering
     
     // Validate pagination parameters
