@@ -11,6 +11,9 @@ const contentHeaders = {
   "Accept-Charset": "utf-8"
 };
 
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
 serve(async (req) => {
   // Handle CORS
   const corsResponse = handleCors(req);
@@ -19,6 +22,26 @@ serve(async (req) => {
   }
 
   try {
+    // Parse pagination parameters and teamId from URL
+    const url = new URL(req.url);
+    const page = parseInt(url.searchParams.get('page') || '1', 10);
+    let pageSize = parseInt(url.searchParams.get('page_size') || String(DEFAULT_PAGE_SIZE), 10);
+    const teamId = url.searchParams.get('teamId'); // New parameter for team filtering
+    
+    // Validate pagination parameters
+    if (isNaN(page) || page < 1) {
+      return new Response(
+        JSON.stringify({ error: "Invalid page parameter" }),
+        { status: 400, headers: { ...corsHeaders, ...contentHeaders } }
+      );
+    }
+
+    // Ensure page_size doesn't exceed maximum
+    pageSize = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
+
+    // Calculate offset
+    const offset = (page - 1) * pageSize;
+
     // Create a Supabase client with the Auth context
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -31,10 +54,17 @@ serve(async (req) => {
     );
 
     // Step 1: Find the highest version number from Rosters
-    const { data: versionData, error: versionError } = await supabaseClient
+    const versionQuery = supabaseClient
       .from("Rosters")
       .select("version")
-      .not("status", "in", '("CUT","RET")')
+      .not("status", "in", '("CUT","RET")');
+    
+    // Add team filter if provided
+    if (teamId) {
+      versionQuery.eq("teamId", teamId);
+    }
+
+    const { data: versionData, error: versionError } = await versionQuery
       .order("version", { ascending: false })
       .limit(1);
 
@@ -51,7 +81,7 @@ serve(async (req) => {
 
     if (!versionData || versionData.length === 0) {
       return new Response(
-        JSON.stringify({ data: [] }),
+        JSON.stringify({ data: [], pagination: { total: 0, page, pageSize, totalPages: 0 } }),
         { 
           status: 200, 
           headers: { ...corsHeaders, ...contentHeaders } 
@@ -59,13 +89,34 @@ serve(async (req) => {
       );
     }
 
-    // Log to validate version data
-    console.log(`Highest version found: ${versionData[0].version}`);
-
     const highestVersion = versionData[0].version;
 
-    // Step 2: Get all active roster entries with the highest version
-    const { data: rostersData, error: rostersError } = await supabaseClient
+    // Get total count with team filter if provided
+    const countQuery = supabaseClient
+      .from("Rosters")
+      .select("*", { count: 'exact', head: true })
+      .eq("version", highestVersion)
+      .not("status", "in", '("CUT","RET")');
+
+    if (teamId) {
+      countQuery.eq("teamId", teamId);
+    }
+
+    const { count: totalCount, error: countError } = await countQuery;
+
+    if (countError) {
+      console.error("Error getting total count:", countError);
+      return new Response(
+        JSON.stringify({ error: "Error calculating pagination" }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, ...contentHeaders } 
+        }
+      );
+    }
+
+    // Step 2: Get paginated roster entries with the highest version and team filter
+    const rostersQuery = supabaseClient
       .from("Rosters")
       .select(`
         id,
@@ -81,7 +132,14 @@ serve(async (req) => {
         teamId
       `)
       .eq("version", highestVersion)
-      .not("status", "in", '("CUT","RET")');
+      .not("status", "in", '("CUT","RET")')
+      .order('name')
+      .range(offset, offset + pageSize - 1);
+    if (teamId) {
+      rostersQuery.eq("teamId", teamId);
+    }
+
+    const { data: rostersData, error: rostersError } = await rostersQuery;
 
     if (rostersError) {
       console.error("Error fetching roster data:", rostersError);
@@ -94,13 +152,9 @@ serve(async (req) => {
       );
     }
 
-    // Log to validate roster data
-    console.log(`Found ${rostersData.length} players with version ${highestVersion}`);
-
-    // Step 3: For each roster entry, get the team info
+    // Step 3: Process roster entries as before
     const formattedData = await Promise.all(
       rostersData.map(async (player) => {
-        // Get team info
         const { data: teamData, error: teamError } = await supabaseClient
           .from("Teams")
           .select("teamId")
@@ -111,13 +165,11 @@ serve(async (req) => {
           console.error(`Error fetching team for player ${player.id}:`, teamError);
         }
 
-        // Format height: convert to feet and inches (e.g., 6'4")
         const heightInches = player.height ? parseInt(player.height) : 0;
         const feet = Math.floor(heightInches / 12);
         const inches = heightInches % 12;
         const formattedHeight = `${feet}'${inches}"`;
 
-        // Format weight: add "lbs" suffix
         const formattedWeight = player.weight ? `${player.weight} lbs` : "";
 
         return {
@@ -135,14 +187,22 @@ serve(async (req) => {
       })
     );
 
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalCount! / pageSize);
+
     return new Response(
-      JSON.stringify({ data: formattedData }),
+      JSON.stringify({
+        data: formattedData,
+        pagination: {
+          total: totalCount,
+          page,
+          pageSize,
+          totalPages
+        }
+      }),
       { 
         status: 200, 
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json; charset=utf-8",
-        },
+        headers: { ...corsHeaders, ...contentHeaders }
       }
     );
   } catch (error) {

@@ -10,8 +10,11 @@ interface NewsArticleRow {
   headlineGerman: string;
   SummaryEnglish: string;
   SummaryGerman: string;
+  Image1: string;
   Image2: string;
+  Image3: string;
   status: string;
+  UpdatedBy: string | null;
   team: {
     teamId: string;
   };
@@ -31,7 +34,9 @@ interface MappedArticle {
   germanHeadline: string;
   SummaryEnglish: string;
   SummaryGerman: string;
+  Image1: string;
   Image2: string;
+  Image3: string;
   createdAt: string;
   SourceName?: string;
   sourceUrl?: string;
@@ -109,7 +114,9 @@ serve(async (req: Request) => {
     germanHeadline: article.headlineGerman,
     SummaryEnglish: article.SummaryEnglish,
     SummaryGerman: article.SummaryGerman,
+    Image1: article.Image1,
     Image2: article.Image2,
+    Image3: article.Image3,
     createdAt: article.SourceArticle.created_at,
     SourceName: article.SourceArticle?.source?.Name,
     sourceUrl: article.SourceArticle?.url,
