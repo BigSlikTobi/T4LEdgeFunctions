@@ -113,7 +113,7 @@ serve(async (req: Request) => {
   if (error) {
     console.error("Error fetching articles:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "An unexpected error occurred. Please try again later." }),
       { status: 500, headers: corsHeaders }
     );
   }
