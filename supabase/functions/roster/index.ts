@@ -133,9 +133,8 @@ serve(async (req) => {
       `)
       .eq("version", highestVersion)
       .not("status", "in", '("CUT","RET")')
-      .range(offset, offset + pageSize - 1)
-      .order('name');
-
+      .order('name')
+      .range(offset, offset + pageSize - 1);
     if (teamId) {
       rostersQuery.eq("teamId", teamId);
     }
