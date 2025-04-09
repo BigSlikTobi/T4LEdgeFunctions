@@ -1,179 +1,208 @@
-// index.ts
-import { serve } from "https://deno.land/std@0.178.0/http/server.ts";
+// functions/roster/index.ts
+import { serve } from "https://deno.land/std@0.178.0/http/server.ts"; // Ensure version matches others
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
-import { corsHeaders, handleCors } from "../cors.ts"; 
+import { corsHeaders, handleCors } from "../cors.ts"; // Assuming cors.ts is one level up
 
-console.log("Roster Edge Function Initialized");
+// --- Interfaces ---
+// Interface for raw data fetched from the Rosters table
+interface RosterRow {
+  id: number;
+  name: string | null;
+  number: number | null;
+  headshotURL: string | null;
+  position: string | null;
+  age: number | null;
+  height: string | null; // Assuming height is stored as string like "73" (inches)
+  weight: number | null;
+  college: string | null;
+  years_exp: number | null;
+  teamId: number; // Foreign key to Teams table (assuming it's the integer ID)
+  version: number;
+  status: string | null;
+  // Add other fields if needed by formatting logic
+}
 
-// Add comprehensive UTF-8 headers
-const contentHeaders = {
-  "Content-Type": "application/json; charset=utf-8",
-  "Accept-Charset": "utf-8"
-};
+// Interface for the formatted player data returned in the response
+interface FormattedRosterPlayer {
+  teamId: string | null; // The actual team abbreviation (e.g., "DAL")
+  name: string | null;
+  number: number | null;
+  headshotURL: string | null;
+  position: string | null;
+  age: number | null;
+  height: string; // Formatted height (e.g., "6'1\"")
+  weight: string; // Formatted weight (e.g., "220 lbs")
+  college: string | null;
+  years_exp: number | null;
+}
+
+// Interface for the pagination metadata
+interface PaginationInfo {
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+// Interface for the final response structure
+interface PaginatedRosterResponse {
+  data: FormattedRosterPlayer[];
+  pagination: PaginationInfo;
+}
+
+// --- Environment Variables & Constants ---
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? ""; // Use Anon Key for client init
 
 const DEFAULT_PAGE_SIZE = 50;
 const MAX_PAGE_SIZE = 100;
 
-serve(async (req) => {
-  // Handle CORS
+// --- Main Handler ---
+serve(async (req: Request) => {
+  // 1. Handle CORS preflight
   const corsResponse = handleCors(req);
   if (corsResponse) {
     return corsResponse;
   }
 
+  // 2. Check HTTP Method
+  if (req.method !== "GET") {
+      return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
+          status: 405,
+          headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+      });
+  }
+
   try {
-    // Parse pagination parameters and teamId from URL
+    // 3. Parse and Validate Parameters
     const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1', 10);
     let pageSize = parseInt(url.searchParams.get('page_size') || String(DEFAULT_PAGE_SIZE), 10);
-    const teamId = url.searchParams.get('teamId'); // New parameter for team filtering
-    
-    // Validate pagination parameters
+    const teamFilterIdParam = url.searchParams.get('teamId'); // Can be null
+    const teamFilterId = teamFilterIdParam ? parseInt(teamFilterIdParam, 10) : null;
+
     if (isNaN(page) || page < 1) {
-      return new Response(
-        JSON.stringify({ error: "Invalid page parameter" }),
-        { status: 400, headers: { ...corsHeaders, ...contentHeaders } }
-      );
+      return new Response(JSON.stringify({ error: "Invalid page parameter" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } });
+    }
+    if (teamFilterId !== null && isNaN(teamFilterId)) {
+       return new Response(JSON.stringify({ error: "Invalid teamId parameter (must be integer)" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } });
     }
 
-    // Ensure page_size doesn't exceed maximum
     pageSize = Math.min(Math.max(1, pageSize), MAX_PAGE_SIZE);
-
-    // Calculate offset
     const offset = (page - 1) * pageSize;
 
-    // Create a Supabase client with the Auth context
+    // 4. Create Request-Scoped Supabase Client (Respects RLS)
     const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        global: {
-          headers: { Authorization: req.headers.get("Authorization")! },
-        },
-      }
+        SUPABASE_URL,
+        SUPABASE_ANON_KEY,
+        {
+            global: { headers: { Authorization: req.headers.get("Authorization")! } },
+            auth: { autoRefreshToken: false, persistSession: false }
+        }
     );
 
-    // Step 1: Find the highest version number from Rosters
-    const versionQuery = supabaseClient
+    // 5. Find Highest Roster Version (respecting RLS and team filter)
+    let versionQuery = supabaseClient
       .from("Rosters")
       .select("version")
-      .not("status", "in", '("CUT","RET")');
-    
-    // Add team filter if provided
-    if (teamId) {
-      versionQuery.eq("teamId", teamId);
+      // RLS Policy handles status filtering: NOT (status = ANY (ARRAY['CUT'::text, 'RET'::text]))
+      ;
+
+    if (teamFilterId !== null) {
+      versionQuery = versionQuery.eq("teamId", teamFilterId); // Filter by integer team ID
     }
 
     const { data: versionData, error: versionError } = await versionQuery
       .order("version", { ascending: false })
       .limit(1);
 
-    if (versionError) {
-      console.error("Error fetching version:", versionError);
-      return new Response(
-        JSON.stringify({ error: "Error fetching version data" }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, ...contentHeaders } 
-        }
-      );
-    }
+    if (versionError) throw versionError;
 
     if (!versionData || versionData.length === 0) {
-      return new Response(
-        JSON.stringify({ data: [], pagination: { total: 0, page, pageSize, totalPages: 0 } }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, ...contentHeaders } 
-        }
-      );
+      // No matching roster data found (could be due to RLS or filters)
+      const emptyPagination: PaginationInfo = { total: 0, page, pageSize, totalPages: 0 };
+      const emptyResponse: PaginatedRosterResponse = { data: [], pagination: emptyPagination };
+      return new Response(JSON.stringify(emptyResponse), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } });
     }
 
     const highestVersion = versionData[0].version;
 
-    // Get total count with team filter if provided
-    const countQuery = supabaseClient
+    // 6. Get Total Count for Pagination (respecting RLS, version, and team filter)
+    let countQuery = supabaseClient
       .from("Rosters")
       .select("*", { count: 'exact', head: true })
       .eq("version", highestVersion)
-      .not("status", "in", '("CUT","RET")');
+      // RLS Policy handles status filtering
+      ;
 
-    if (teamId) {
-      countQuery.eq("teamId", teamId);
+    if (teamFilterId !== null) {
+      countQuery = countQuery.eq("teamId", teamFilterId);
     }
 
-    const { count: totalCount, error: countError } = await countQuery;
+    const { count: totalCountNullable, error: countError } = await countQuery;
+    if (countError) throw countError;
+    const totalCount = totalCountNullable ?? 0; // Handle null count
 
-    if (countError) {
-      console.error("Error getting total count:", countError);
-      return new Response(
-        JSON.stringify({ error: "Error calculating pagination" }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, ...contentHeaders } 
-        }
-      );
-    }
-
-    // Step 2: Get paginated roster entries with the highest version and team filter
-    const rostersQuery = supabaseClient
+    // 7. Fetch Paginated Roster Data (respecting RLS, version, and team filter)
+    let rostersQuery = supabaseClient
       .from("Rosters")
       .select(`
-        id,
-        name,
-        number,
-        headshotURL,
-        position,
-        age,
-        height,
-        weight,
-        college,
-        years_exp,
-        teamId
-      `)
+        id, name, number, headshotURL, position, age, height, weight, college, years_exp,
+        teamId, version, status
+      `) // Select fields needed, including teamId (FK)
       .eq("version", highestVersion)
-      .not("status", "in", '("CUT","RET")')
-      .order('name')
+      // RLS Policy handles status filtering
+      .order('name') // Or by number, position etc.
       .range(offset, offset + pageSize - 1);
-    if (teamId) {
-      rostersQuery.eq("teamId", teamId);
+
+    if (teamFilterId !== null) {
+      rostersQuery = rostersQuery.eq("teamId", teamFilterId);
     }
 
     const { data: rostersData, error: rostersError } = await rostersQuery;
+    if (rostersError) throw rostersError;
 
-    if (rostersError) {
-      console.error("Error fetching roster data:", rostersError);
-      return new Response(
-        JSON.stringify({ error: "Error fetching roster data" }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, ...contentHeaders } 
+    // Ensure rostersData is an array
+    const validRostersData: RosterRow[] = rostersData || []; // Add type assertion
+
+    // 8. Format Data (including fetching string teamId)
+    const formattedData: FormattedRosterPlayer[] = await Promise.all(
+      validRostersData.map(async (player: RosterRow) => { // Added type for player
+        let teamAbbreviation: string | null = null;
+        if (player.teamId) {
+            // Fetch the string teamId (e.g., 'DAL') from the Teams table using the FK
+            // This query also respects RLS policy on Teams table (public read allowed)
+            const { data: teamData, error: teamError } = await supabaseClient
+                .from("Teams")
+                .select("teamId") // Select the string abbreviation column
+                .eq("id", player.teamId) // Filter by the integer ID from Rosters
+                .single(); // Expect only one team
+
+            if (teamError) {
+                console.error(`Error fetching team abbreviation for player ${player.id} (team FK: ${player.teamId}):`, teamError.message);
+            } else if (teamData) {
+                teamAbbreviation = teamData.teamId; // Assign the string abbreviation
+            }
         }
-      );
-    }
 
-    // Step 3: Process roster entries as before
-    const formattedData = await Promise.all(
-      rostersData.map(async (player) => {
-        const { data: teamData, error: teamError } = await supabaseClient
-          .from("Teams")
-          .select("teamId")
-          .eq("id", player.teamId)
-          .single();
-
-        if (teamError) {
-          console.error(`Error fetching team for player ${player.id}:`, teamError);
+        // Format height (e.g., "73" -> "6'1\"")
+        let formattedHeight = "";
+        if (player.height) {
+          try {
+            const heightInches = parseInt(player.height, 10);
+            if (!isNaN(heightInches)) {
+                const feet = Math.floor(heightInches / 12);
+                const inches = heightInches % 12;
+                formattedHeight = `${feet}'${inches}"`;
+            }
+          } catch (_e) { /* LINT FIX: ignore parsing error, indicated by _e */ }
         }
 
-        const heightInches = player.height ? parseInt(player.height) : 0;
-        const feet = Math.floor(heightInches / 12);
-        const inches = heightInches % 12;
-        const formattedHeight = `${feet}'${inches}"`;
-
+        // Format weight (e.g., 220 -> "220 lbs")
         const formattedWeight = player.weight ? `${player.weight} lbs` : "";
 
         return {
-          teamId: teamData?.teamId || null,
+          teamId: teamAbbreviation, // Use the fetched string abbreviation
           name: player.name,
           number: player.number,
           headshotURL: player.headshotURL,
@@ -187,42 +216,46 @@ serve(async (req) => {
       })
     );
 
-    // Calculate pagination metadata
-    const totalPages = Math.ceil(totalCount! / pageSize);
+    // 9. Calculate Pagination Metadata
+    const totalPages = Math.ceil(totalCount / pageSize);
+    const paginationInfo: PaginationInfo = {
+      total: totalCount,
+      page,
+      pageSize,
+      totalPages
+    };
+
+    // 10. Construct Final Response
+    const responsePayload: PaginatedRosterResponse = {
+      data: formattedData,
+      pagination: paginationInfo
+    };
 
     return new Response(
-      JSON.stringify({
-        data: formattedData,
-        pagination: {
-          total: totalCount,
-          page,
-          pageSize,
-          totalPages
-        }
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, ...contentHeaders }
-      }
+      JSON.stringify(responsePayload),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
     );
+
   } catch (error) {
-    console.error("Unexpected error:", error);
+    // 11. Handle Errors
+    console.error("Error executing roster function:", error);
+    const _errorMessage = error instanceof Error ? error.message : "An unexpected error occurred.";
+
+    // --- LINT FIX: Safer error property access ---
+    let clientErrorMessage = "Failed to fetch roster data."; // Default message
+    if (typeof error === 'object' && error !== null) {
+        // Assert potentially expected properties, making them optional
+        const potentialSupabaseError = error as { code?: string; message?: string };
+        if (potentialSupabaseError.code === 'PGRST301' || potentialSupabaseError.message?.includes('JWT')) {
+            clientErrorMessage = "Authorization error.";
+        }
+        // Add more specific checks based on potential errors if needed
+    }
+    // --- LINT FIX END ---
+
     return new Response(
-      JSON.stringify({ error: "An unexpected error occurred" }),
-      { 
-        status: 500, 
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json; charset=utf-8",
-        },
-      }
+      JSON.stringify({ error: clientErrorMessage }), // Use the determined message
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
     );
   }
 });
-
-/* To invoke locally:
-  1. Run `supabase start` (see: https://supabase.com/docs/reference/cli/supabase-start)
-  2. Make an HTTP request:
-  curl -i --location --request GET 'http://127.0.0.1:54321/functions/v1/roster' \
-    --header 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
-*/
