@@ -16,9 +16,7 @@ const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
 // Basic validation for environment variables
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error("Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY");
-    // Consider throwing an error to prevent the function from starting incorrectly
-    // throw new Error("Missing Supabase configuration in environment variables.");
+    throw new Error("Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY");
 }
 
 serve(async (req: Request) => {
