@@ -39,14 +39,7 @@ interface PaginatedResponse {
 
 // Securely fetch keys from environment variables.
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-// Initialize the Supabase client with the service role key.
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  global: {
-    headers: { "Content-Type": "application/json" },
-  },
-});
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 serve(async (req: Request) => {
   // Handle CORS preflight
@@ -79,11 +72,27 @@ serve(async (req: Request) => {
   }
   // --- End Pagination Logic ---
 
+    try { // Added try block for client creation
+      // *** CREATE request-scoped client using Anon Key + Auth Header ***
+      const supabaseClient = createClient(
+          SUPABASE_URL,
+          SUPABASE_ANON_KEY, // Use Anon Key for initialization
+          {
+            global: { headers: { Authorization: req.headers.get("Authorization")! } },
+            auth: { // Recommended settings for functions
+                autoRefreshToken: false,
+                persistSession: false
+            }
+          }
+      );
+
+
   // Build the query
-  let query = supabase
+  let query = supabaseClient
     .from("NewsArticles")
     .select(`
       id, 
+      headlineEnglish,
       headlineGerman,
       Image1,
       status,
@@ -129,13 +138,13 @@ serve(async (req: Request) => {
   // Map to the desired output structure using typedData directly
   const mappedData: MappedArticle[] = (typedData || []).map((article) => ({
     id: article.id,
-    englishHeadline: article.headlineEnglish,
-    germanHeadline: article.headlineGerman,
-    Image: article.Image1,
-    createdAt: article.SourceArticle.created_at,
-    UpdatedBy: article.UpdatedBy, // Keep UpdatedBy in the output
+    englishHeadline: article.headlineEnglish ?? '',
+    germanHeadline: article.headlineGerman ?? '',
+    Image: article.Image1 ?? '',
+    createdAt: article.SourceArticle.created_at ?? new Date(0).toISOString(),
+    UpdatedBy: article.UpdatedBy,
     teamId: article.team?.teamId,
-    status: article.status,
+    status: article.status ?? '',
   }));
 
   // Determine the next cursor
@@ -164,4 +173,17 @@ serve(async (req: Request) => {
       },
     }
   );
+  } catch (error) { // Catch errors from client creation or query
+      console.error("Error executing function:", error);
+      // Avoid leaking detailed Supabase errors to the client if possible
+      const clientErrorMessage = (typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 'PGRST301') ||
+                            (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string' && (error as { message: string }).message.includes('JWT'))
+        ? "Authorization error."
+        : "Failed to fetch articles.";
+
+      return new Response(
+          JSON.stringify({ error: clientErrorMessage }),
+          { status: 500, headers: corsHeaders }
+      );
+  }
 });
