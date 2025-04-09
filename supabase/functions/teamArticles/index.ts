@@ -75,7 +75,9 @@ Deno.serve(async (req) => {
   if (isNaN(limit) || limit <= 0) {
     return new Response(JSON.stringify({ error: "Invalid limit parameter" }), { status: 400, headers: corsHeaders });
   }
-  if (cursor !== null && isNaN(cursor)) { /* ... Invalid cursor error ... */ }
+  if (cursor !== null && isNaN(cursor)) {
+    return new Response(JSON.stringify({ error: "Invalid cursor parameter" }), { status: 400, headers: corsHeaders });
+  }
   // --- End Pagination and Filter Logic ---
 
 
