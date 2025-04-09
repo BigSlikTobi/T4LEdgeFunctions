@@ -72,7 +72,9 @@ Deno.serve(async (req) => {
   if (!teamIdParam) {
     return new Response(JSON.stringify({ error: "Missing teamId parameter" }), { status: 400, headers: corsHeaders });
   }
-  if (isNaN(limit) || limit <= 0) { /* ... Invalid limit error ... */ }
+  if (isNaN(limit) || limit <= 0) {
+    return new Response(JSON.stringify({ error: "Invalid limit parameter" }), { status: 400, headers: corsHeaders });
+  }
   if (cursor !== null && isNaN(cursor)) { /* ... Invalid cursor error ... */ }
   // --- End Pagination and Filter Logic ---
 
