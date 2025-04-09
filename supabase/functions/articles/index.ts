@@ -1,5 +1,4 @@
-// TODO: depricate this method and migrate to artcleDetails and articlePreviews to enhance performance
-
+// TODO: deprecate this method and migrate to articleDetail and articlePreviews to enhance performance
 // index.ts
 import { serve } from "https://deno.land/std@0.178.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
