@@ -1,0 +1,16 @@
+{
+  "version": "4",
+  "redirects": {
+    "https://esm.sh/jose@v5.2.3": "https://esm.sh/jose@5.2.3"
+  },
+  "remote": {
+    "https://esm.sh/jose@5.2.3": "820d85921de099dfab8e34129aecf65fe61f78a2afc7d59da46f1cf43cdd7364",
+    "https://esm.sh/jose@5.2.3/denonext/base64url.mjs": "df9239c5292b9d60134014e87fd6ee2f5b5d7b9670202441be101b9ec83b415d",
+    "https://esm.sh/jose@5.2.3/denonext/dist/browser/lib/buffer_utils.mjs": "01058dba488b35dfc72a2a78b268984237516bae422586762411c21405be97f4",
+    "https://esm.sh/jose@5.2.3/denonext/dist/browser/runtime/base64url.mjs": "ca5dadd8fa598ba64adf9537d88e0faf26741598af8f95a01c0ec397adaac33b",
+    "https://esm.sh/jose@5.2.3/denonext/dist/browser/runtime/digest.mjs": "1bafb127d812c5f3d1e9b38243e64d91dd88c7b07e5ace24030cd0f15dd23e42",
+    "https://esm.sh/jose@5.2.3/denonext/dist/browser/runtime/webcrypto.mjs": "4f92bb64f1854dc350efab0cfe84edcc72df4a6c73cd8662e27e0847d0adeb1e",
+    "https://esm.sh/jose@5.2.3/denonext/errors.mjs": "e9017ec21315cb624e8a877df931d1651a7061917f8f495630402a60eec97618",
+    "https://esm.sh/jose@5.2.3/denonext/jose.mjs": "6c1a3d78da5343554c5f91ee0d1ef06553af98c98d872bd06db99c358e4645a2"
+  }
+}
