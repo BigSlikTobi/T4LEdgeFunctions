@@ -224,9 +224,15 @@ serve(async (req) => {
     );
     const results = await Promise.allSettled(sendPromises);
 
-    const successfulSends = 0;
-    const failedSends = 0;
-    results.forEach((_result, _index) => { /* ... process results (no change needed here) ... */ });
+    let successfulSends = 0;
+    let failedSends = 0;
+    results.forEach(result => {
+        if (result.status === 'fulfilled') {
+            successfulSends++;
+        } else if (result.status === 'rejected') {
+            failedSends++;
+        }
+    });
     console.log(`Notification sending complete. Success: ${successfulSends}, Failed: ${failedSends}`);
 
     return new Response(JSON.stringify({
