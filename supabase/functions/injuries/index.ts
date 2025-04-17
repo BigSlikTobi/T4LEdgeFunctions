@@ -101,6 +101,7 @@ serve(async (req) => {
       id: injury.id,
       created_at: injury.created_at,
       teamId: injury.team,
+      playerId: playerObj?.id,
       playerName: playerObj?.name,
       playerImgUrl: playerObj?.img_url,
       date: injury.date,
