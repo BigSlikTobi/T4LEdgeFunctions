@@ -1,9 +1,8 @@
-// functions/teams/index.ts
-
 import { serve } from "https://deno.land/std@0.136.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.43.1";
+import { corsHeaders } from "../cors.ts";
 
-// Define a type for expected Supabase errors (can be refined if needed)
+// Define a type for expected Supabase errors
 interface SupabaseApiError extends Error {
     code?: string;
     details?: string;
@@ -14,105 +13,97 @@ interface SupabaseApiError extends Error {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
 
-// Basic validation for environment variables
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error("FATAL: Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY");
     throw new Error("Missing required environment variables: SUPABASE_URL or SUPABASE_ANON_KEY");
 }
 
+console.log("Teams function initializing...");
+
 serve(async (req: Request) => {
-    // Define CORS headers
-    const corsHeaders = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    };
+    console.log(`Received request: ${req.method} ${req.url}`);
 
-    // Standard Content-Type header for JSON responses
-    const jsonContentTypeHeader = {
-        "Content-Type": "application/json; charset=utf-8",
-    };
-
-    // Handle OPTIONS preflight request for CORS
-    if (req.method === "OPTIONS") {
-        return new Response("ok", { headers: { ...corsHeaders } });
-    }
-
-    // Check if required env vars are present before proceeding
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        console.error("Function called without required environment variables set.");
-        return new Response(
-            JSON.stringify({ error: "Server configuration error." }),
-            { status: 500, headers: { ...corsHeaders, ...jsonContentTypeHeader } }
-        );
+    if (req.method === 'OPTIONS') {
+        console.log("Responding to OPTIONS preflight request.");
+        return new Response("ok", { headers: corsHeaders, status: 200 });
     }
 
     try {
-        // Create request-scoped Supabase client
         const supabaseClient = createClient(
             SUPABASE_URL,
             SUPABASE_ANON_KEY,
             {
-                global: { headers: { Authorization: req.headers.get("Authorization")! } },
                 auth: {
                     autoRefreshToken: false,
                     persistSession: false
                 }
             }
         );
+        console.log("Supabase client created.");
 
-        // Fetch all teams from the Teams table
-        const { data, error: dbError } = await supabaseClient // Renamed error variable
+        console.log("Fetching teams from 'Teams' table...");
+
+        // --- FIX: Use correct column names (likely camelCase) ---
+        const { data, error: dbError } = await supabaseClient
             .from("Teams")
             .select(`
               teamId,
               fullName,
               division,
               conference
-            `);
+            `); // Use exact column names from DB schema
 
-        // Handle potential database errors
         if (dbError) {
             console.error("Supabase query error:", dbError);
-
-            // --- Type-Safe Error Handling ---
             let clientErrorMessage = "Failed to fetch teams data.";
-            let statusCode = 500; // Default to internal server error
+            let statusCode = 500;
 
-            // Check if dbError is an object and potentially has specific properties
             if (dbError && typeof dbError === 'object') {
-                 // Check for specific Supabase error codes or messages
-                if ('code' in dbError && (dbError.code === 'PGRST301' || String(dbError.message || '').includes('JWT'))) {
+                 if ('code' in dbError && (dbError.code === 'PGRST301' || String(dbError.message || '').includes('JWT'))) {
                     clientErrorMessage = "Authorization error.";
-                    statusCode = 401; // Unauthorized
-                } else {
-                    // For other DB errors, provide a generic message but use a 4xx/5xx code
-                    // Inspect dbError.code or dbError.details if needed for more specific handling
+                    statusCode = 401;
+                } else if ('code' in dbError && dbError.code === '42703') { // Handle undefined column more specifically
+                    clientErrorMessage = `Database query error: ${dbError.message}`;
+                    statusCode = 400; // Bad request (likely incorrect column name in call)
+                }
+                 else {
                     statusCode = typeof dbError.code === 'string' && dbError.code.startsWith('PGRST') ? 400 : 500;
                 }
             }
-            // --- End Type-Safe Error Handling ---
 
             return new Response(
                 JSON.stringify({ error: clientErrorMessage }),
-                { status: statusCode, headers: { ...corsHeaders, ...jsonContentTypeHeader } }
+                {
+                    status: statusCode,
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+                }
             );
         }
+        console.log(`Fetched ${data?.length ?? 0} teams from database.`);
 
-        // Return the teams data (ensure data is not null)
+        // --- FIX: No transformation needed if select uses correct names ---
+        // The 'data' already has fields like teamId, fullName if selected correctly
+        // const transformedData = (data ?? []).map(dbTeam => ({ ... })); // REMOVE or simplify if needed
+
+        console.log("Returning successful response.");
         return new Response(
-            JSON.stringify({ data: data || [] }), // Return empty array if data is null
-            { headers: { ...corsHeaders, ...jsonContentTypeHeader } }
+            // Directly stringify 'data' if .select() used the correct names
+            JSON.stringify({ data: data || [] }),
+            {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: 200
+            }
         );
 
     } catch (err) {
-        // Catch unexpected errors during execution (e.g., client creation failure)
         console.error("Unexpected error in function:", err);
-        // Avoid leaking potentially sensitive details from generic Errors
         const errorMessage = err instanceof Error ? "An internal server error occurred." : "An unknown error occurred.";
-
         return new Response(
             JSON.stringify({ error: errorMessage }),
-            { status: 500, headers: { ...corsHeaders, ...jsonContentTypeHeader } }
+            {
+                status: 500,
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            }
         );
     }
 });
