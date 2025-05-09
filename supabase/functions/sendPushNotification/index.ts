@@ -199,7 +199,7 @@ serve(async (req) => {
 
     console.log(`Fetching device tokens subscribed to team ID: ${teamNumericId}`);
     const { data: tokensData, error: tokenError } = await supabaseClient
-        .from('device_tokens')
+        .from('DeviceToken')
         .select('token')
         .eq('subscribed_team_id', teamNumericId);
 
