@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "dev": "deno run --watch --allow-net --allow-env --allow-read index.ts"
+  },
+  "fmt": {
+    "options": {
+      "indentWidth": 2,
+      "singleQuote": true
+    }
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window", "dom"],
+    "strict": true
+  }
+}
