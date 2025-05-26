@@ -65,14 +65,14 @@ serve(async (req: Request) => {
   if (isNaN(limit) || limit <= 0 || limit > 100) { // Added upper bound check
     return new Response(
       JSON.stringify({ error: "Invalid limit parameter (must be 1-100)" }),
-      { status: 400, headers: corsHeaders }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
     );
   }
   // Validate cursor
   if (cursor !== null && (isNaN(cursor) || cursor < 0)) { // Cursor should be positive
      return new Response(
       JSON.stringify({ error: "Invalid cursor parameter" }),
-      { status: 400, headers: corsHeaders }
+      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
     );
   }
   // Optional: Validate teamIdParam format if needed (e.g., 3 uppercase letters)
@@ -102,8 +102,6 @@ serve(async (req: Request) => {
         team:Teams!inner ( teamId ),       
         SourceArticle!inner ( created_at, source ) 
       `)
-      // Filter to only get articles from source = 1
-      .eq('SourceArticle.source', 1)
       // RLS Policy handles visibility based on status (e.g., status = 'PUBLISHED')
       // .neq("status", "ARCHIVED") // REMOVED - Rely on RLS
       .order("created_at", { referencedTable: "SourceArticle", ascending: false })
@@ -141,12 +139,12 @@ serve(async (req: Request) => {
       console.error("Supabase query error:", error);
       // Check for specific RLS violation (often results in empty data or specific error code)
       if (queryStatus === 401 || queryStatus === 403 || error.message.includes("security barrier")) {
-         return new Response(JSON.stringify({ error: "Authorization failed." }), { status: 403, headers: corsHeaders });
+         return new Response(JSON.stringify({ error: "Authorization failed." }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } });
       }
       // Generic error for other issues
       return new Response(
         JSON.stringify({ error: "Failed to fetch articles. Database error." }),
-        { status: 500, headers: corsHeaders }
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
       );
     }
 
@@ -209,7 +207,7 @@ serve(async (req: Request) => {
 
       return new Response(
           JSON.stringify({ error: clientErrorMessage }),
-          { status: 500, headers: corsHeaders }
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" } }
       );
   }
 });

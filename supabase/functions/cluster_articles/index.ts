@@ -1,5 +1,5 @@
 // Cluster Infos Edge Function
-// Fetches cluster information with related data across multiple tables
+// Fetches cluster information with related data across multiple tables where cherry_pick is false
 import { serve } from "https://deno.land/std@0.178.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { corsHeaders, handleCors } from "../cors.ts";
@@ -62,22 +62,46 @@ serve(async (req: Request): Promise<Response> => { // Ensure Promise<Response>
 
     if (isNaN(pageSize) || pageSize <= 0 || pageSize > 100) {
       return new Response(JSON.stringify({ error: "Invalid limit parameter. Must be between 1 and 100." }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
         status: 400,
       });
     }
     
     if (cursor && isNaN(new Date(cursor).getTime())) {
       return new Response(JSON.stringify({ error: "Invalid cursor parameter. Must be a valid ISO date string." }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
         status: 400,
       });
     }
 
-    // 1. Fetch cluster_articles (paginated)
+    // 1. First get clusters with cherry_pick = false
+    const { data: nonCherryPickedClusters, error: clusterError } = await supabase
+      .from("clusters")
+      .select("cluster_id")
+      .eq("cherry_pick", false);
+
+    if (clusterError) {
+      console.error("Error fetching clusters:", clusterError.message);
+      return new Response(JSON.stringify({ error: "Failed to fetch non-cherry-picked clusters: " + clusterError.message }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+        status: 500,
+      });
+    }
+
+    if (!nonCherryPickedClusters || nonCherryPickedClusters.length === 0) {
+      return new Response(JSON.stringify({ data: [], nextCursor: null, message: "No non-cherry-picked clusters found." }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+        status: 200,
+      });
+    }
+
+    const clusterIds = nonCherryPickedClusters.map((cluster: { cluster_id: string }) => cluster.cluster_id);
+
+    // 2. Fetch cluster_articles for non-cherry-picked clusters (paginated)
     let clusterArticlesQuery = supabase
       .from("cluster_articles")
       .select("id, headline, summary, content, image_url, source_article_ids, created_at")
+      .in("cluster_id", clusterIds)
       .order("created_at", { ascending: false })
       .limit(pageSize);
 
@@ -91,30 +115,30 @@ serve(async (req: Request): Promise<Response> => { // Ensure Promise<Response>
     if (clusterArticlesError) {
       console.error("Error fetching cluster_articles:", clusterArticlesError.message);
       return new Response(JSON.stringify({ error: "Failed to fetch cluster articles: " + clusterArticlesError.message }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
         status: 500,
       });
     }
 
     if (!clusterArticlesData || clusterArticlesData.length === 0) {
       return new Response(JSON.stringify({ data: [], nextCursor: null, message: "No more articles found." }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
         status: 200,
       });
     }
 
-    const clusterIds = clusterArticlesData.map((ca: ClusterArticle) => ca.id);
+    const articleIds = clusterArticlesData.map((ca: ClusterArticle) => ca.id);
     const allSourceArticleIds = [
       ...new Set(clusterArticlesData.flatMap((ca: ClusterArticle) => ca.source_article_ids || [])),
     ];
 
     // 2. Fetch cluster_article_int data
     const intlDataMap = new Map<string, ClusterArticleInt[]>();
-    if (clusterIds.length > 0) {
+    if (articleIds.length > 0) {
       const { data: intlArticles, error: intlError } = await supabase
         .from("cluster_article_int")
         .select("cluster_article_id, language_code, headline, summary, content") // Ensured cluster_article_id is used
-        .in("cluster_article_id", clusterIds) // Ensured cluster_article_id is used
+        .in("cluster_article_id", articleIds) // Ensured cluster_article_id is used
         .returns<ClusterArticleInt[]>();
 
       if (intlError) {
@@ -186,7 +210,7 @@ serve(async (req: Request): Promise<Response> => { // Ensure Promise<Response>
         : null;
 
     return new Response(JSON.stringify({ data: formattedArticles, nextCursor }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
       status: 200,
     });
 
@@ -194,7 +218,7 @@ serve(async (req: Request): Promise<Response> => { // Ensure Promise<Response>
     console.error("Main error handler in cluster_articles:", error);
     const message = error instanceof Error ? error.message : "An unexpected error occurred";
     return new Response(JSON.stringify({ error: message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
       status: 500,
     });
   }

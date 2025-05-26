@@ -591,3 +591,47 @@ entrypoint = "./functions/cluster_articles/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/cluster_articles/*.html" ]
+
+[functions.story_lines]
+enabled = true
+verify_jwt = true
+import_map = "./functions/story_lines/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/story_lines/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/story_lines/*.html" ]
+
+[functions.story_lines_by_id]
+enabled = true
+verify_jwt = true
+import_map = "./functions/story_lines_by_id/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/story_lines_by_id/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/story_lines_by_id/*.html" ]
+
+[functions.story_line_view_by_id]
+enabled = true
+verify_jwt = true
+import_map = "./functions/story_line_view_by_id/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/story_line_view_by_id/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/story_line_view_by_id/*.html" ]
+
+[functions.tiimeline_by_cluster_id]
+enabled = true
+verify_jwt = true
+import_map = "./functions/tiimeline_by_cluster_id/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/tiimeline_by_cluster_id/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/tiimeline_by_cluster_id/*.html" ]
