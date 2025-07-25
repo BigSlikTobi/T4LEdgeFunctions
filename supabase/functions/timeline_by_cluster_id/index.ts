@@ -11,8 +11,14 @@ interface TimelineEntry {
   source_name: string;
 }
 
+// Add interface for nested date structure
+interface DateGroupedEntry {
+  date: string;
+  articles: TimelineEntry[];
+}
+
 interface TimelineData {
-  timeline: TimelineEntry[];
+  timeline: (TimelineEntry | DateGroupedEntry)[];
   cluster_id?: string;
   ClusterId?: string;
   clusterId?: string;
@@ -207,14 +213,47 @@ serve(async (req: Request) => {
     const dataClusterId = timelineData.cluster_id || timelineData.ClusterId || timelineData.clusterId;
     console.log(`Debug: Timeline data cluster_id: ${dataClusterId}, requested: ${cluster_id}`);
 
-    // Clean and transform the timeline data
-    const cleanedTimeline: CleanedTimelineEntry[] = timelineData.timeline?.map((entry: TimelineEntry) => ({
-      headline: entry.headline || "",
-      instruction: entry.summary || "", // Using summary as instruction
-      content: entry.summary || "", // Using summary as content as well, can be modified based on requirements
-      created_at: entry.created_at, // Extract created_at
-      source_name: entry.source_name, // Extract source_name
-    })) || [];
+    // Clean and transform the timeline data - handle both flat and nested structures
+    const cleanedTimeline: CleanedTimelineEntry[] = [];
+    
+    if (timelineData.timeline) {
+      console.log(`Debug: Processing ${timelineData.timeline.length} timeline entries`);
+      
+      for (const entry of timelineData.timeline) {
+        // Check if entry has 'articles' property (nested structure)
+        if ('articles' in entry && Array.isArray(entry.articles)) {
+          console.log(`Debug: Found date-grouped entry with ${entry.articles.length} articles for date: ${entry.date}`);
+          
+          // Process nested articles
+          for (const article of entry.articles) {
+            if (article.headline || article.summary) { // Only add non-empty entries
+              cleanedTimeline.push({
+                headline: article.headline || "",
+                instruction: article.summary || "",
+                content: article.summary || "",
+                created_at: article.created_at,
+                source_name: article.source_name,
+              });
+            }
+          }
+        } else {
+          // Process flat entry (direct timeline entry)
+          const flatEntry = entry as TimelineEntry;
+          if (flatEntry.headline || flatEntry.summary) { // Only add non-empty entries
+            console.log(`Debug: Processing flat timeline entry: ${flatEntry.headline}`);
+            cleanedTimeline.push({
+              headline: flatEntry.headline || "",
+              instruction: flatEntry.summary || "",
+              content: flatEntry.summary || "",
+              created_at: flatEntry.created_at,
+              source_name: flatEntry.source_name,
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`Debug: Extracted ${cleanedTimeline.length} total articles from timeline structure`);
 
     // Prepare response
     const response = {
